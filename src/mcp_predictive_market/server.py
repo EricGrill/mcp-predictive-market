@@ -1,8 +1,11 @@
 """MCP server entry point for prediction market aggregation."""
+import json
+
 from mcp.server import Server
 from mcp.types import Tool, TextContent
 
 from mcp_predictive_market.adapters.manifold import ManifoldAdapter
+from mcp_predictive_market.tools import ToolHandlers
 
 
 def create_server() -> Server:
@@ -80,6 +83,24 @@ def create_server() -> Server:
                 },
             ),
         ]
+
+    handlers = ToolHandlers(adapters)
+
+    @server.call_tool()
+    async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+        """Handle tool calls."""
+        if name == "search_markets":
+            result = await handlers.search_markets(**arguments)
+        elif name == "get_market_odds":
+            result = await handlers.get_market_odds(**arguments)
+        elif name == "list_categories":
+            result = await handlers.list_categories()
+        elif name == "browse_category":
+            result = await handlers.browse_category(**arguments)
+        else:
+            raise ValueError(f"Unknown tool: {name}")
+
+        return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
     return server
 
