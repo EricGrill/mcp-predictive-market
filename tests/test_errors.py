@@ -240,3 +240,171 @@ class TestPlatformErrorInResponse:
         # The error message should contain the formatted PlatformError string
         assert "polymarket" in result["errors"][0]["error"]
         assert "API rate limit exceeded" in result["errors"][0]["error"]
+
+
+class TestListCategoriesErrorHandling:
+    """Tests for list_categories error handling."""
+
+    def _create_mock_adapter(
+        self, platform: str, categories: list[str] | None = None, error: Exception | None = None
+    ):
+        """Create a mock adapter that returns categories or raises an error."""
+        adapter = MagicMock()
+        adapter.platform = platform
+
+        if error:
+            adapter.list_categories = AsyncMock(side_effect=error)
+        else:
+            adapter.list_categories = AsyncMock(return_value=categories or [])
+
+        return adapter
+
+    @pytest.mark.asyncio
+    async def test_list_categories_returns_partial_results_on_platform_failure(self):
+        """list_categories should return categories from successful platforms and errors from failed ones."""
+        working_adapter = self._create_mock_adapter("manifold", categories=["politics", "technology"])
+        failing_adapter = self._create_mock_adapter(
+            "polymarket",
+            error=PlatformError(platform="polymarket", message="API timeout"),
+        )
+
+        adapters = {"manifold": working_adapter, "polymarket": failing_adapter}
+        handlers = ToolHandlers(adapters)
+
+        result = await handlers.list_categories()
+
+        # Should have categories from the working adapter
+        assert "categories" in result
+        assert "politics" in result["categories"]
+        assert "technology" in result["categories"]
+
+        # Should have error info for the failing adapter
+        assert "errors" in result
+        assert len(result["errors"]) == 1
+        assert result["errors"][0]["platform"] == "polymarket"
+        assert "API timeout" in result["errors"][0]["error"]
+
+    @pytest.mark.asyncio
+    async def test_list_categories_returns_all_categories_when_no_failures(self):
+        """list_categories should return all categories when all platforms succeed."""
+        adapter1 = self._create_mock_adapter("manifold", categories=["politics", "technology"])
+        adapter2 = self._create_mock_adapter("polymarket", categories=["sports", "technology"])
+
+        adapters = {"manifold": adapter1, "polymarket": adapter2}
+        handlers = ToolHandlers(adapters)
+
+        result = await handlers.list_categories()
+
+        # Should have combined unique categories
+        assert set(result["categories"]) == {"politics", "technology", "sports"}
+        # Should have no errors
+        assert result["errors"] == []
+
+    @pytest.mark.asyncio
+    async def test_list_categories_returns_empty_with_errors_when_all_fail(self):
+        """list_categories should return empty categories with errors when all platforms fail."""
+        failing_adapter1 = self._create_mock_adapter(
+            "manifold",
+            error=PlatformError(platform="manifold", message="Server error"),
+        )
+        failing_adapter2 = self._create_mock_adapter(
+            "polymarket",
+            error=PlatformError(platform="polymarket", message="Network error"),
+        )
+
+        adapters = {"manifold": failing_adapter1, "polymarket": failing_adapter2}
+        handlers = ToolHandlers(adapters)
+
+        result = await handlers.list_categories()
+
+        assert result["categories"] == []
+        assert len(result["errors"]) == 2
+
+
+class TestGetTrackedMarketsErrorHandling:
+    """Tests for get_tracked_markets error handling."""
+
+    def _create_sample_market(self, platform: str, title: str) -> Market:
+        """Create a sample market for testing."""
+        from datetime import datetime, timezone
+
+        return Market(
+            platform=platform,
+            native_id="test123",
+            url=f"https://{platform}.com/market/test123",
+            title=title,
+            description="Test market",
+            category="technology",
+            probability=0.5,
+            volume=1000.0,
+            resolved=False,
+            resolution=None,
+            created_at=datetime.now(timezone.utc),
+            last_fetched=datetime.now(timezone.utc),
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_tracked_markets_collects_errors_for_failed_refreshes(self):
+        """get_tracked_markets should collect errors when refreshing tracked markets fails."""
+        # Create adapters - one will succeed, one will fail
+        market = self._create_sample_market("manifold", "Test Market")
+
+        working_adapter = MagicMock()
+        working_adapter.get_market = AsyncMock(return_value=market)
+
+        failing_adapter = MagicMock()
+        failing_adapter.get_market = AsyncMock(
+            side_effect=PlatformError(platform="polymarket", message="Market not found")
+        )
+
+        adapters = {"manifold": working_adapter, "polymarket": failing_adapter}
+        handlers = ToolHandlers(adapters)
+
+        # Manually add tracked markets (simulating previous track_market calls)
+        handlers._tracked_markets = {
+            "manifold:market1": {"alias": "m1", "tracked_at": "2024-01-01T00:00:00Z"},
+            "polymarket:market2": {"alias": "m2", "tracked_at": "2024-01-01T00:00:00Z"},
+        }
+
+        result = await handlers.get_tracked_markets()
+
+        # Should have one successful result
+        assert len(result["tracked_markets"]) == 1
+        assert result["tracked_markets"][0]["alias"] == "m1"
+
+        # Should have one error
+        assert len(result["errors"]) == 1
+        assert result["errors"][0]["market_id"] == "polymarket:market2"
+        assert "Market not found" in result["errors"][0]["error"]
+
+
+class TestGetMarketOddsErrorHandling:
+    """Tests for get_market_odds error handling."""
+
+    @pytest.mark.asyncio
+    async def test_get_market_odds_raises_on_adapter_failure(self):
+        """get_market_odds should propagate exception when adapter.get_market fails."""
+        failing_adapter = MagicMock()
+        failing_adapter.get_market = AsyncMock(
+            side_effect=PlatformError(platform="manifold", message="Market not found")
+        )
+
+        adapters = {"manifold": failing_adapter}
+        handlers = ToolHandlers(adapters)
+
+        with pytest.raises(PlatformError) as exc_info:
+            await handlers.get_market_odds(platform="manifold", market_id="nonexistent")
+
+        assert exc_info.value.platform == "manifold"
+        assert exc_info.value.message == "Market not found"
+
+    @pytest.mark.asyncio
+    async def test_get_market_odds_raises_value_error_for_unknown_platform(self):
+        """get_market_odds should raise ValueError for unknown platform."""
+        adapters = {"manifold": MagicMock()}
+        handlers = ToolHandlers(adapters)
+
+        with pytest.raises(ValueError) as exc_info:
+            await handlers.get_market_odds(platform="unknown_platform", market_id="test123")
+
+        assert "Unknown platform" in str(exc_info.value)

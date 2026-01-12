@@ -79,15 +79,16 @@ class ToolHandlers:
     async def list_categories(self) -> dict[str, Any]:
         """List available categories across platforms."""
         all_categories: set[str] = set()
+        errors = []
 
-        for adapter in self._adapters.values():
+        for name, adapter in self._adapters.items():
             try:
                 categories = await adapter.list_categories()
                 all_categories.update(categories)
-            except Exception:
-                pass
+            except Exception as e:
+                errors.append({"platform": name, "error": str(e)})
 
-        return {"categories": sorted(all_categories)}
+        return {"categories": sorted(all_categories), "errors": errors}
 
     async def browse_category(
         self,
