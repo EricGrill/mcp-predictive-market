@@ -5,6 +5,7 @@ from typing import Any
 from mcp_predictive_market.adapters.base import PlatformAdapter
 from mcp_predictive_market.analysis.arbitrage import ArbitrageDetector
 from mcp_predictive_market.analysis.matching import MarketMatcher
+from mcp_predictive_market.errors import PlatformError
 from mcp_predictive_market.schema import Market
 
 
