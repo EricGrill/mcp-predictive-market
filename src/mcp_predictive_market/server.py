@@ -90,6 +90,61 @@ def create_server() -> Server:
                     "required": ["category"],
                 },
             ),
+            Tool(
+                name="track_market",
+                description="Add a market to your tracking watchlist",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "platform": {
+                            "type": "string",
+                            "description": "Platform name (manifold, polymarket, etc.)",
+                        },
+                        "market_id": {
+                            "type": "string",
+                            "description": "The market's native ID",
+                        },
+                        "alias": {
+                            "type": "string",
+                            "description": "Optional friendly name for the market",
+                        },
+                    },
+                    "required": ["platform", "market_id"],
+                },
+            ),
+            Tool(
+                name="get_tracked_markets",
+                description="Get all markets in your watchlist with current prices",
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            Tool(
+                name="find_arbitrage",
+                description="Find price discrepancies across platforms",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "min_spread": {
+                            "type": "number",
+                            "description": "Minimum probability difference to report (default 0.05)",
+                            "default": 0.05,
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="compare_platforms",
+                description="Side-by-side odds comparison for markets matching a query",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search query to find markets to compare",
+                        },
+                    },
+                    "required": ["query"],
+                },
+            ),
         ]
 
     handlers = ToolHandlers(adapters)
@@ -105,6 +160,14 @@ def create_server() -> Server:
             result = await handlers.list_categories()
         elif name == "browse_category":
             result = await handlers.browse_category(**arguments)
+        elif name == "track_market":
+            result = await handlers.track_market(**arguments)
+        elif name == "get_tracked_markets":
+            result = await handlers.get_tracked_markets()
+        elif name == "find_arbitrage":
+            result = await handlers.find_arbitrage(**arguments)
+        elif name == "compare_platforms":
+            result = await handlers.compare_platforms(**arguments)
         else:
             raise ValueError(f"Unknown tool: {name}")
 
