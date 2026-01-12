@@ -1,4 +1,5 @@
 """Polymarket platform adapter."""
+import json
 from datetime import datetime, timezone
 
 import httpx
@@ -98,21 +99,38 @@ class PolymarketAdapter:
             closes_at = datetime.fromisoformat(data["endDate"].replace("Z", "+00:00"))
 
         # Parse probability from outcomePrices (first outcome = Yes)
+        # API may return as JSON string or list
         probability = 0.5
-        outcome_prices = data.get("outcomePrices", [])
+        outcome_prices_raw = data.get("outcomePrices", [])
+        if isinstance(outcome_prices_raw, str):
+            try:
+                outcome_prices = json.loads(outcome_prices_raw)
+            except json.JSONDecodeError:
+                outcome_prices = []
+        else:
+            outcome_prices = outcome_prices_raw or []
+
         if outcome_prices and len(outcome_prices) >= 1:
             probability = float(outcome_prices[0])
 
-        # Build outcomes
+        # Build outcomes (may also be JSON string)
         outcomes = []
-        outcome_names = data.get("outcomes", ["Yes", "No"])
+        outcome_names_raw = data.get("outcomes", ["Yes", "No"])
+        if isinstance(outcome_names_raw, str):
+            try:
+                outcome_names = json.loads(outcome_names_raw)
+            except json.JSONDecodeError:
+                outcome_names = ["Yes", "No"]
+        else:
+            outcome_names = outcome_names_raw or ["Yes", "No"]
+
         for i, name in enumerate(outcome_names):
             prob = float(outcome_prices[i]) if i < len(outcome_prices) else 0.5
             outcomes.append(Outcome(name=name, probability=prob))
 
         return Market(
             platform=self.platform,
-            native_id=data["id"],
+            native_id=str(data["id"]),
             url=f"https://polymarket.com/market/{data.get('slug', data['id'])}",
             title=data["question"],
             description=data.get("description", ""),
