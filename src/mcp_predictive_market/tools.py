@@ -20,7 +20,7 @@ class ToolHandlers:
         self._arbitrage_detector = ArbitrageDetector(self._matcher)
 
     def _market_to_dict(self, market: Market) -> dict[str, Any]:
-        """Convert Market to API response dict."""
+        """Convert a Market object to a JSON-serializable dictionary."""
         return {
             "id": market.id,
             "platform": market.platform,
