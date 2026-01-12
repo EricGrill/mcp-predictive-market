@@ -5,6 +5,10 @@ from mcp.server import Server
 from mcp.types import Tool, TextContent
 
 from mcp_predictive_market.adapters.manifold import ManifoldAdapter
+from mcp_predictive_market.adapters.polymarket import PolymarketAdapter
+from mcp_predictive_market.adapters.metaculus import MetaculusAdapter
+from mcp_predictive_market.adapters.predictit import PredictItAdapter
+from mcp_predictive_market.adapters.kalshi import KalshiAdapter
 from mcp_predictive_market.tools import ToolHandlers
 
 
@@ -15,6 +19,10 @@ def create_server() -> Server:
     # Initialize adapters
     adapters = {
         "manifold": ManifoldAdapter(),
+        "polymarket": PolymarketAdapter(),
+        "metaculus": MetaculusAdapter(),
+        "predictit": PredictItAdapter(),
+        "kalshi": KalshiAdapter(),
     }
 
     @server.list_tools()
