@@ -4,6 +4,7 @@ from typing import Any
 
 from mcp_predictive_market.adapters.base import PlatformAdapter
 from mcp_predictive_market.analysis.arbitrage import ArbitrageDetector
+from mcp_predictive_market.analysis.correlation import CorrelationAnalyzer
 from mcp_predictive_market.analysis.matching import MarketMatcher
 from mcp_predictive_market.errors import PlatformError
 from mcp_predictive_market.schema import Market
@@ -18,6 +19,7 @@ class ToolHandlers:
         self._tracked_markets: dict[str, dict] = {}  # market_id -> market info
         self._matcher = MarketMatcher()
         self._arbitrage_detector = ArbitrageDetector(self._matcher)
+        self._correlation_analyzer = CorrelationAnalyzer()
 
     def _market_to_dict(self, market: Market) -> dict[str, Any]:
         """Convert a Market object to a JSON-serializable dictionary."""
@@ -218,4 +220,129 @@ class ToolHandlers:
         result = self._arbitrage_detector.compare_platforms(all_markets)
         result["errors"] = errors
 
+        return result
+
+    async def analyze_correlation(
+        self,
+        query: str,
+        min_history_points: int = 3,
+        include_lead_lag: bool = True,
+    ) -> dict[str, Any]:
+        """Analyze correlations between markets matching a query."""
+        # Search for markets
+        all_markets = []
+        errors = []
+
+        for name, adapter in self._adapters.items():
+            try:
+                markets = await adapter.search_markets(query)
+                all_markets.extend(markets)
+            except Exception as e:
+                errors.append({"platform": name, "error": str(e)})
+
+        # Filter to markets with price history
+        markets_with_history = [
+            m for m in all_markets if len(m.price_history) >= min_history_points
+        ]
+
+        if len(markets_with_history) < 2:
+            return {
+                "error": f"Need at least 2 markets with {min_history_points}+ price history points. Found {len(markets_with_history)}.",
+                "markets_checked": len(all_markets),
+                "errors": errors,
+            }
+
+        # Calculate correlations
+        correlations = self._correlation_analyzer.correlation_matrix(
+            markets_with_history, include_lead_lag=include_lead_lag
+        )
+
+        return {
+            "correlations": [
+                {
+                    "market_a": c.market_a_id,
+                    "market_b": c.market_b_id,
+                    "market_a_title": c.market_a_title,
+                    "market_b_title": c.market_b_title,
+                    "correlation": c.correlation,
+                    "confidence": c.confidence,
+                    "sample_size": c.sample_size,
+                    "lead_lag": c.lead_lag,
+                }
+                for c in correlations
+            ],
+            "markets_analyzed": len(markets_with_history),
+            "errors": errors,
+        }
+
+    async def find_clusters(
+        self,
+        query: str,
+        min_correlation: float = 0.5,
+    ) -> dict[str, Any]:
+        """Find clusters of correlated markets."""
+        all_markets = []
+        errors = []
+
+        for name, adapter in self._adapters.items():
+            try:
+                markets = await adapter.search_markets(query)
+                all_markets.extend(markets)
+            except Exception as e:
+                errors.append({"platform": name, "error": str(e)})
+
+        markets_with_history = [m for m in all_markets if len(m.price_history) >= 3]
+
+        if len(markets_with_history) < 2:
+            return {
+                "error": "Need at least 2 markets with price history for clustering",
+                "errors": errors,
+            }
+
+        clusters = self._correlation_analyzer.find_clusters(
+            markets_with_history, min_correlation=min_correlation
+        )
+
+        return {
+            "clusters": [
+                {
+                    "id": c.id,
+                    "markets": c.markets,
+                    "avg_internal_correlation": c.avg_internal_correlation,
+                    "representative_market": c.representative_market,
+                }
+                for c in clusters
+            ],
+            "markets_analyzed": len(markets_with_history),
+            "errors": errors,
+        }
+
+    async def diversification_suggestions(
+        self,
+        query: str,
+        portfolio_size: int = 5,
+    ) -> dict[str, Any]:
+        """Get diversification suggestions for a set of markets."""
+        all_markets = []
+        errors = []
+
+        for name, adapter in self._adapters.items():
+            try:
+                markets = await adapter.search_markets(query)
+                all_markets.extend(markets)
+            except Exception as e:
+                errors.append({"platform": name, "error": str(e)})
+
+        markets_with_history = [m for m in all_markets if len(m.price_history) >= 3]
+
+        if len(markets_with_history) < 2:
+            return {
+                "error": "Need at least 2 markets with price history for diversification analysis",
+                "errors": errors,
+            }
+
+        result = self._correlation_analyzer.diversification_suggestions(
+            markets_with_history, target_portfolio_size=portfolio_size
+        )
+        result["errors"] = errors
         return result

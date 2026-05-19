@@ -145,6 +145,68 @@ def create_server() -> Server:
                     "required": ["query"],
                 },
             ),
+            Tool(
+                name="analyze_correlation",
+                description="Analyze price correlations between prediction markets",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search query to find markets to analyze",
+                        },
+                        "min_history_points": {
+                            "type": "integer",
+                            "description": "Minimum price history points needed (default 3)",
+                            "default": 3,
+                        },
+                        "include_lead_lag": {
+                            "type": "boolean",
+                            "description": "Whether to compute lead/lag analysis (default true)",
+                            "default": True,
+                        },
+                    },
+                    "required": ["query"],
+                },
+            ),
+            Tool(
+                name="find_clusters",
+                description="Find clusters of correlated prediction markets",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search query to find markets to cluster",
+                        },
+                        "min_correlation": {
+                            "type": "number",
+                            "description": "Minimum correlation to be in same cluster (default 0.5)",
+                            "default": 0.5,
+                        },
+                    },
+                    "required": ["query"],
+                },
+            ),
+            Tool(
+                name="diversification_suggestions",
+                description="Get diversification suggestions for prediction markets",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search query to find markets",
+                        },
+                        "portfolio_size": {
+                            "type": "integer",
+                            "description": "Desired number of markets in portfolio (default 5)",
+                            "default": 5,
+                        },
+                    },
+                    "required": ["query"],
+                },
+            ),
         ]
 
     handlers = ToolHandlers(adapters)
@@ -168,6 +230,12 @@ def create_server() -> Server:
             result = await handlers.find_arbitrage(**arguments)
         elif name == "compare_platforms":
             result = await handlers.compare_platforms(**arguments)
+        elif name == "analyze_correlation":
+            result = await handlers.analyze_correlation(**arguments)
+        elif name == "find_clusters":
+            result = await handlers.find_clusters(**arguments)
+        elif name == "diversification_suggestions":
+            result = await handlers.diversification_suggestions(**arguments)
         else:
             raise ValueError(f"Unknown tool: {name}")
 
